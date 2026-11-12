@@ -1,6 +1,6 @@
 # AI-Native Assignments API
 
-Backend for the AI-Native Assignments project. Built with FastAPI and SQLAlchemy, it runs in Docker and uses a Supabase Postgres database through the Session pooler. You don't need a local Postgres.
+Backend for the AI-Native Assignments project. Built with FastAPI and SQLAlchemy, it runs in Docker and uses Supabase Postgres through the Session pooler. You don't need a local Postgres.
 
 ## Prerequisites
 
@@ -13,33 +13,39 @@ Backend for the AI-Native Assignments project. Built with FastAPI and SQLAlchemy
 cp .env.example .env
 ```
 
-In Supabase, open **Connect** and choose **Session pooler**. Copy the connection string into `DATABASE_URL` in `.env` and change it in two ways:
-
-1. Change the scheme from `postgresql://` to `postgresql+psycopg://`.
-2. Replace `[YOUR-PASSWORD]` with your database password, without the brackets.
-
-```
-DATABASE_URL=postgresql+psycopg://postgres.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres
-```
+| Variable | Where to find it |
+|---|---|
+| `DATABASE_URL` | Supabase → **Connect** → **Session pooler**. Change `postgresql://` to `postgresql+psycopg://`, and replace `[YOUR-PASSWORD]` with your password, without the brackets. |
+| `SUPABASE_URL` | Supabase → **Project Settings** → **API** → Project URL |
+| `SUPABASE_PUBLISHABLE_KEY` | Supabase → **Project Settings** → **API Keys** → publishable key |
+| `ANTHROPIC_API_KEY` | Optional for now |
+| `ALLOWED_ORIGINS` | Comma-separated frontend origins. The default is `http://localhost:3000`. |
+| `ENV` | `local` by default |
 
 `.env` is gitignored. Never commit it.
 
 ## 2. Run with Docker
 
+The API is on host port **8010**, so it doesn't clash with other projects that use 8000.
+
 ```bash
 docker compose up --build -d
-curl http://localhost:8000/health
+curl http://localhost:8010/health
 ```
 
 A healthy response is `{"status": "ok", "db": "connected"}`. If the API can't reach the database, it returns HTTP 503 with `{"status": "error", "db": "unreachable"}`.
 
-`./app` and `./tests` are mounted into the container, so code changes reload automatically. To see logs, run `docker compose logs -f api`. To stop the API, run `docker compose down`.
+- API docs: http://localhost:8010/docs
+- Logs: `docker compose logs -f api`
+- Stop: `docker compose down`
 
-Interactive API docs are at http://localhost:8000/docs.
+`./app` and `./tests` are mounted into the container, so code changes reload automatically.
 
-## 3. Run tests
+## 3. Lint and test
 
 ```bash
+docker compose run --rm api ruff check . --fix
+docker compose run --rm api ruff format .
 docker compose run --rm api pytest
 ```
 
@@ -49,13 +55,14 @@ The tests mock the database, so they don't need Supabase.
 
 ```
 app/
-  main.py         FastAPI app and /health route
-  auth/           (empty packages, filled in by later features)
-  assignments/
-  submissions/
-  ai/
-  sessions/
-  models/
+  core/            config, constants, database, security, rate limiting, middleware
+  users/           users and auth
+  assignments/     courses and assignments
+  submissions/     submissions and step entries
+  ai/              AI tutor
+  sessions/        work sessions and activity events
+  main.py          app setup and /health
 tests/
-  test_health.py
 ```
+
+Each feature folder has `router.py`, `schemas.py`, `service.py` and `models.py`. See [CLAUDE.md](CLAUDE.md) for conventions.
