@@ -76,3 +76,18 @@ docker compose run --rm api pytest
 - Never commit secrets, and never print, cat or log `.env`. This repo is public.
 - The AI never returns full solutions, and it never produces cheating scores. Review priority is always `routine`, `worth_reviewing` or `needs_conversation`, with reasons.
 - Keep PRs small, with one feature each.
+- Branch names follow `type/issue-number-short-name`, where `type` is `feature`, `fix`, `chore` or `docs`. For example, `feature/10-ai-chat`. Never commit to `main`. See the `git-workflow` skill.
+
+## Skills
+
+Team skills live in `.claude/skills/`. Use the one that matches the task.
+
+| Skill | When it applies |
+|---|---|
+| `setup-project` | A teammate is setting up the backend for the first time, or local setup breaks (port busy, "Field required", 503 from /health). |
+| `clean-code` | Writing or changing any Python in this repo. |
+| `git-workflow` | Creating a branch, committing, or opening or merging a PR. |
+| `new-endpoint` | Adding or changing an API route. |
+| `ai-feature` | Any code that calls the LLM or touches `app/ai`. |
+| `review-pr` | Reviewing a teammate's pull request. |
+| `ship-pr` | Only when someone types `/ship-pr`. It checks, commits, pushes and opens the PR. |

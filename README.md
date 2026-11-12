@@ -1,5 +1,7 @@
 # AI-Native Assignments API
 
+[![CI](https://github.com/nu-launchlabs-team4/ai-native-assignments-backend/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nu-launchlabs-team4/ai-native-assignments-backend/actions/workflows/ci.yml)
+
 Backend for the AI-Native Assignments project. Built with FastAPI and SQLAlchemy, it runs in Docker and uses Supabase Postgres through the Session pooler. You don't need a local Postgres.
 
 ## Prerequisites
@@ -66,3 +68,32 @@ tests/
 ```
 
 Each feature folder has `router.py`, `schemas.py`, `service.py` and `models.py`. See [CLAUDE.md](CLAUDE.md) for conventions.
+
+## Contributing
+
+1. Pick an issue from the Team 4 Sprint Board.
+2. Branch from an up-to-date `main`, using the name `type/issue-number-short-name`, where `type` is `feature`, `fix`, `chore` or `docs`:
+   ```bash
+   git checkout main && git pull
+   git checkout -b feature/10-ai-chat
+   ```
+3. Make the change, then run lint and tests (see above).
+4. Open a PR with `Closes #N`. CI (the `test` check) must pass, and one approval is required before you squash merge.
+
+Never commit `.env` or any secret. This repo is public.
+
+### Claude Code skills
+
+If you use Claude Code, the team skills in [`.claude/skills/`](.claude/skills/) load automatically:
+
+| Skill | Use it for |
+|---|---|
+| `setup-project` | First-time setup and fixing a broken local setup |
+| `clean-code` | Code style for any Python change |
+| `git-workflow` | Branches, commits and PRs |
+| `new-endpoint` | Adding or changing a route |
+| `ai-feature` | Anything that calls the LLM or touches `app/ai` |
+| `review-pr` | Reviewing a teammate's PR |
+| `ship-pr` | Type `/ship-pr` to check, commit, push and open the PR |
+
+Project conventions are in [CLAUDE.md](CLAUDE.md).
