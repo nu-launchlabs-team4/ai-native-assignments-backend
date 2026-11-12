@@ -27,7 +27,7 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # TODO(auth): verify the Supabase JWT in credentials.credentials.
+    # TODO(wmw01): verify the Supabase JWT in credentials.credentials (#4).
     #   - Check signature, expiry and audience against the Supabase project.
     #   - Build CurrentUser from the verified claims (sub -> id, role).
     #   - Set request.state.user_id = user.id so rate limits key on the user.
