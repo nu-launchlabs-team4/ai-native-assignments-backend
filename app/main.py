@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.ai.router import router as ai_router
+from app.assignments.router import courses_router
 from app.assignments.router import router as assignments_router
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -45,7 +46,14 @@ app.add_middleware(
 
 register_exception_handlers(app)
 
-for router in (users_router, assignments_router, submissions_router, ai_router, sessions_router):
+for router in (
+    users_router,
+    courses_router,
+    assignments_router,
+    submissions_router,
+    ai_router,
+    sessions_router,
+):
     app.include_router(router)
 
 

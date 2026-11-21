@@ -7,4 +7,6 @@ services:
     volumes:
       - ./app:/code/app
       - ./tests:/code/tests
+      - ./migrations:/code/migrations
+      - ./alembic.ini:/code/alembic.ini
       - ./pyproject.toml:/code/pyproject.toml

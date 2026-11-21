@@ -34,6 +34,14 @@ class ReviewPriority(StrEnum):
     NEEDS_CONVERSATION = "needs_conversation"
 
 
+class AnswerType(StrEnum):
+    """How a question is answered. The frontend mirrors this in lib/constants.ts."""
+
+    CODE = "code"
+    TEXT = "text"
+    MATH = "math"
+
+
 class Role(StrEnum):
     STUDENT = "student"
     PROFESSOR = "professor"
