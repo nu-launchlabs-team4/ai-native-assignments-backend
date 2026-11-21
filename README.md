@@ -53,6 +53,23 @@ docker compose run --rm api pytest
 
 The tests mock the database, so they don't need Supabase.
 
+## 4. Database migrations
+
+Tables are created and changed with [Alembic](https://alembic.sqlalchemy.org). Migrations live in `migrations/versions/`, and Alembic reads `DATABASE_URL` from `.env`.
+
+```bash
+docker compose run --rm api alembic upgrade head      # apply every new migration
+docker compose run --rm api alembic current           # show which migration the database is on
+```
+
+After you add or change a model, import its module in `migrations/env.py` if it's new, then generate a migration and read it before committing:
+
+```bash
+docker compose run --rm api alembic revision --autogenerate -m "add submissions"
+```
+
+Everyone shares one Supabase database, so tell the team before you run `upgrade` on a new migration, and never edit a migration that's already merged.
+
 ## Project layout
 
 ```
@@ -64,6 +81,7 @@ app/
   ai/              AI tutor
   sessions/        work sessions and activity events
   main.py          app setup and /health
+migrations/        Alembic migrations
 tests/
 ```
 

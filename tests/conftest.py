@@ -12,7 +12,15 @@ os.environ.setdefault("SUPABASE_PUBLISHABLE_KEY", "test-key")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.core.database import get_db  # noqa: E402
+from app.core.rate_limit import limiter  # noqa: E402
 from app.main import app  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits() -> None:
+    # Every test client shares one IP, so without a reset the whole suite
+    # shares one 60/minute budget and fails once it grows past that.
+    limiter.reset()
 
 
 @pytest.fixture
