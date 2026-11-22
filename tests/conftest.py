@@ -1,5 +1,5 @@
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,10 +10,17 @@ os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_PUBLISHABLE_KEY", "test-key")
 
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from app.core.database import get_db  # noqa: E402
+from app.core.constants import Role  # noqa: E402
+from app.core.database import Base, get_db  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
+from app.core.security import CurrentUser, get_current_user  # noqa: E402
 from app.main import app  # noqa: E402
+
+LoginAs = Callable[[Role, str], None]
 
 
 @pytest.fixture(autouse=True)
@@ -34,3 +41,34 @@ def client(db: MagicMock) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def db_session() -> Iterator[Session]:
+    # In-memory SQLite stands in for Supabase so the service queries really run.
+    # StaticPool keeps one connection, so every request sees the same database.
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, autoflush=False)()
+    yield session
+    session.close()
+    engine.dispose()
+
+
+@pytest.fixture
+def api(db_session: Session) -> Iterator[TestClient]:
+    app.dependency_overrides[get_db] = lambda: db_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def login_as() -> LoginAs:
+    # Supabase JWT checks aren't built yet (#4), so tests replace the signed-in user.
+    def log_in(role: Role, user_id: str) -> None:
+        app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=user_id, role=role)
+
+    return log_in
