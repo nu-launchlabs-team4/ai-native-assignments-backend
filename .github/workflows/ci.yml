@@ -13,8 +13,23 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    services:
+      # A throwaway Postgres for checking migrations. Tests still use SQLite and mocks.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      # Placeholders so settings load. Tests mock the database, so nothing connects.
+      # The Supabase values are placeholders. DATABASE_URL points at the Postgres service above.
       DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
       SUPABASE_URL: https://ci-placeholder.supabase.co
       SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
@@ -34,6 +49,16 @@ jobs:
 
       - name: Ruff format
         run: ruff format --check .
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      # Fails when a model changed without a matching migration.
+      - name: Check models match migrations
+        run: alembic check
+
+      - name: Check migrations downgrade
+        run: alembic downgrade base && alembic upgrade head
 
       - name: Pytest
         run: pytest -q
