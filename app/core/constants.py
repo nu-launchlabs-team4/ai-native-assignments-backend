@@ -42,6 +42,19 @@ class AnswerType(StrEnum):
     MATH = "math"
 
 
+class SubmissionStatus(StrEnum):
+    IN_PROGRESS = "in_progress"
+    SUBMITTED = "submitted"
+
+
+class EvaluationVerdict(StrEnum):
+    """The student's judgement of the AI feedback in the evaluate step."""
+
+    CORRECT = "correct"
+    PARTLY_CORRECT = "partly_correct"
+    INCORRECT = "incorrect"
+
+
 class Role(StrEnum):
     STUDENT = "student"
     PROFESSOR = "professor"
