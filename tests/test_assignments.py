@@ -7,6 +7,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.assignments.schemas import (
+    MAX_INSTRUCTIONS_CHARS,
+    MAX_PROMPT_CHARS,
+    MAX_STARTER_CODE_CHARS,
+)
 from app.core.constants import Role
 from app.core.database import Base, get_db
 from app.core.security import CurrentUser, get_current_user
@@ -195,6 +200,44 @@ def test_assignment_needs_a_question(api: TestClient, login_as: LoginAs) -> None
     response = api.post("/assignments", json=body)
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("field", "limit"),
+    [("prompt", MAX_PROMPT_CHARS), ("starter_code", MAX_STARTER_CODE_CHARS)],
+)
+def test_question_text_has_a_length_limit(
+    api: TestClient, login_as: LoginAs, field: str, limit: int
+) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    body = assignment_body(create_course(api))
+    question = {"prompt": "Write a function.", "answer_type": "code", "language": "python"}
+    question[field] = "x" * (limit + 1)
+    body["questions"] = [question]
+
+    response = api.post("/assignments", json=body)
+
+    assert response.status_code == 422
+
+
+def test_instructions_have_a_length_limit(api: TestClient, login_as: LoginAs) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    body = assignment_body(create_course(api))
+    body["instructions"] = "x" * (MAX_INSTRUCTIONS_CHARS + 1)
+
+    response = api.post("/assignments", json=body)
+
+    assert response.status_code == 422
+
+
+def test_text_at_the_limit_is_accepted(api: TestClient, login_as: LoginAs) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    body = assignment_body(create_course(api))
+    body["instructions"] = "x" * MAX_INSTRUCTIONS_CHARS
+
+    response = api.post("/assignments", json=body)
+
+    assert response.status_code == 201
 
 
 def test_student_cannot_create_course(api: TestClient, login_as: LoginAs) -> None:

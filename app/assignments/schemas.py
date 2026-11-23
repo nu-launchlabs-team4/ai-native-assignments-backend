@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.core.constants import AIPolicy, AnswerType, FinalCheck, HelpLevel
 
 MAX_QUESTIONS = 100
+# Caps for text the PDF parser fills in automatically, so one huge PDF can't bloat a row.
+MAX_PROMPT_CHARS = 10_000
+MAX_STARTER_CODE_CHARS = 50_000
+MAX_INSTRUCTIONS_CHARS = 20_000
 
 
 class CourseCreate(BaseModel):
@@ -24,10 +28,10 @@ class CourseOut(BaseModel):
 
 
 class QuestionCreate(BaseModel):
-    prompt: str = Field(min_length=1)
+    prompt: str = Field(min_length=1, max_length=MAX_PROMPT_CHARS)
     answer_type: AnswerType
     language: str | None = Field(default=None, min_length=1, max_length=32)
-    starter_code: str | None = None
+    starter_code: str | None = Field(default=None, max_length=MAX_STARTER_CODE_CHARS)
 
     @model_validator(mode="after")
     def check_language(self) -> Self:
@@ -52,7 +56,7 @@ class QuestionOut(BaseModel):
 class AssignmentCreate(BaseModel):
     course_id: uuid.UUID
     title: str = Field(min_length=1, max_length=200)
-    instructions: str = ""
+    instructions: str = Field(default="", max_length=MAX_INSTRUCTIONS_CHARS)
     ai_policy: AIPolicy = AIPolicy.PERMITTED
     help_level: HelpLevel = HelpLevel.HINTS
     final_check: FinalCheck = FinalCheck.AI_INTERVIEW
