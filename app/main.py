@@ -22,9 +22,12 @@ from app.core.middleware import (
 from app.core.rate_limit import limiter
 from app.sessions.router import router as sessions_router
 from app.submissions.router import router as submissions_router
+from app.users.router import auth_router
 from app.users.router import router as users_router
 
 logging.basicConfig(level=logging.INFO)
+# httpx logs every outgoing request's full URL at INFO; keep only its warnings.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 settings = get_settings()
 
@@ -47,6 +50,7 @@ app.add_middleware(
 register_exception_handlers(app)
 
 for router in (
+    auth_router,
     users_router,
     courses_router,
     assignments_router,
