@@ -20,6 +20,7 @@ TIMEOUT_SECONDS = 10.0
 UNAVAILABLE = "Sign-in is unavailable right now. Try again in a minute"
 SESSION_EXPIRED = "Session expired. Log in again"
 WRONG_CREDENTIALS = "That email and password don't match. Check them and try again."
+RESET_LINK_INVALID = "This reset link has expired or was already used. Request a new one."
 
 # Supabase error_code -> (our status, our message). None keeps Supabase's message.
 _ERRORS: dict[str, tuple[int, str | None]] = {
@@ -34,7 +35,13 @@ _ERRORS: dict[str, tuple[int, str | None]] = {
     "refresh_token_not_found": (status.HTTP_401_UNAUTHORIZED, SESSION_EXPIRED),
     "refresh_token_already_used": (status.HTTP_401_UNAUTHORIZED, SESSION_EXPIRED),
     "session_not_found": (status.HTTP_401_UNAUTHORIZED, SESSION_EXPIRED),
+    "same_password": (
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        "Choose a password different from your current one.",
+    ),
 }
+# Statuses a caller should always see: they aren't about the request's details.
+_PASS_THROUGH = (status.HTTP_429_TOO_MANY_REQUESTS, status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 @dataclass(frozen=True)
@@ -74,6 +81,35 @@ def refresh(refresh_token: str) -> AuthSession:
     return _session(data)
 
 
+def request_password_reset(email: str) -> None:
+    """Email a reset link. Says nothing about whether the account exists."""
+    try:
+        _request("POST", "/recover", {"email": email})
+    except HTTPException as exc:
+        if exc.status_code in _PASS_THROUGH:
+            raise
+        # Any other answer could reveal whether the email has an account, so it's not shown.
+
+
+def reset_password(token_hash: str, password: str) -> AuthSession:
+    """Use a reset link's one-time code to log in, then set the new password."""
+    try:
+        session = _session(
+            _request("POST", "/verify", {"type": "recovery", "token_hash": token_hash})
+        )
+    except HTTPException as exc:
+        if exc.status_code in _PASS_THROUGH:
+            raise
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, RESET_LINK_INVALID) from exc
+    _request(
+        "PUT",
+        "/user",
+        {"password": password},
+        headers={"Authorization": f"Bearer {session.access_token}"},
+    )
+    return session
+
+
 def sign_out(access_token: str) -> None:
     """Revoke the session's refresh tokens. Failures are logged, not raised."""
     try:
@@ -97,9 +133,15 @@ def _client() -> httpx.Client:
 
 
 def _post(path: str, body: dict[str, str]) -> dict[str, Any]:
+    return _request("POST", path, body)
+
+
+def _request(
+    method: str, path: str, body: dict[str, str], headers: dict[str, str] | None = None
+) -> dict[str, Any]:
     try:
         with _client() as client:
-            response = client.post(path, json=body)
+            response = client.request(method, path, json=body, headers=headers)
     except httpx.HTTPError as exc:
         logger.warning("Supabase Auth unreachable: %s", type(exc).__name__)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, UNAVAILABLE) from exc
@@ -127,7 +169,8 @@ def _error(response: httpx.Response) -> HTTPException:
         return HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts. Try again in a minute"
         )
-    if response.status_code in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_CONTENT):
+    # Any other client error is about the request, not an outage.
+    if response.status_code < status.HTTP_500_INTERNAL_SERVER_ERROR:
         return HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             supabase_message or "Check the email and password",

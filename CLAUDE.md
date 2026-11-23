@@ -56,8 +56,9 @@ A feature owns its own models.
 - **Rate limits:** slowapi keys on the user id when the request is authenticated, else on the client IP.
   - The default limit is `RATE_LIMIT_DEFAULT` (60/minute).
   - Use `@limiter.limit(RATE_LIMIT_AI)` on AI routes and `@limiter.limit(RATE_LIMIT_PDF_UPLOAD)` on PDF upload. A route with `@limiter.limit` must take `request: Request`.
-- **Auth:** `/auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout` and `/auth/me` (in `app/users`). The backend calls Supabase Auth over REST (`app/users/supabase_auth.py`) and puts the tokens in httpOnly, SameSite=Lax cookies (`access_token`, `refresh_token`), never in a response body.
+- **Auth:** `/auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me`, `/auth/forgot-password` and `/auth/reset-password` (in `app/users`). The backend calls Supabase Auth over REST (`app/users/supabase_auth.py`) and puts the tokens in httpOnly, SameSite=Lax cookies (`access_token`, `refresh_token`), never in a response body.
   - `get_current_user` reads the `access_token` cookie, verifies it with Supabase's public keys (ES256 through JWKS, so there's no JWT secret), and loads the role from the `users` table. No cookie or a bad token gives 401; an expired one gives 401 "Session expired", and the frontend then calls `/auth/refresh`.
+  - Password reset: `/auth/forgot-password` always answers 204, so it never reveals whether an account exists. The reset email links to the frontend's `/reset-password?token_hash=…` (set in Supabase's Reset Password email template), and `/auth/reset-password` swaps that one-time code for a session, sets the new password and the cookies.
   - Roles: emails in `PROFESSOR_EMAILS` become professors on sign-up or log-in; everyone else is a student. A role is never taken from the token or the request.
   - Protect routes with `Depends(get_current_user)` or `Depends(require_role(Role.PROFESSOR))`. Feature tests use the `login_as` fixture instead of real tokens.
 

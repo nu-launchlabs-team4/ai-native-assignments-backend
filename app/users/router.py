@@ -9,7 +9,14 @@ from app.core.rate_limit import limiter
 from app.core.security import CurrentUser, get_current_user
 from app.users import service
 from app.users.cookies import clear_session_cookies, set_session_cookies
-from app.users.schemas import LoginIn, SignupIn, SignupOut, UserOut
+from app.users.schemas import (
+    ForgotPasswordIn,
+    LoginIn,
+    ResetPasswordIn,
+    SignupIn,
+    SignupOut,
+    UserOut,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -42,6 +49,22 @@ def refresh(
     request: Request, response: Response, db: DbSession, refresh_token: RefreshCookie = None
 ) -> UserOut:
     user, session = service.refresh(db, refresh_token)
+    set_session_cookies(response, session)
+    return user
+
+
+@auth_router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(RATE_LIMIT_AUTH)
+def forgot_password(request: Request, body: ForgotPasswordIn) -> None:
+    service.forgot_password(body)
+
+
+@auth_router.post("/reset-password", response_model=UserOut)
+@limiter.limit(RATE_LIMIT_AUTH)
+def reset_password(
+    request: Request, response: Response, body: ResetPasswordIn, db: DbSession
+) -> UserOut:
+    user, session = service.reset_password(db, body)
     set_session_cookies(response, session)
     return user
 

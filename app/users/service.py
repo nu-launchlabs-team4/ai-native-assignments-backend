@@ -12,7 +12,14 @@ from app.core.constants import Role
 from app.core.security import CurrentUser
 from app.users import supabase_auth
 from app.users.models import User
-from app.users.schemas import LoginIn, SignupIn, SignupOut, UserOut
+from app.users.schemas import (
+    ForgotPasswordIn,
+    LoginIn,
+    ResetPasswordIn,
+    SignupIn,
+    SignupOut,
+    UserOut,
+)
 from app.users.supabase_auth import AuthSession
 
 logger = logging.getLogger(__name__)
@@ -38,6 +45,17 @@ def refresh(db: Session, refresh_token: str | None) -> tuple[UserOut, AuthSessio
     if not refresh_token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not logged in")
     session = supabase_auth.refresh(refresh_token)
+    return UserOut.model_validate(_ensure_user(db, session)), session
+
+
+def forgot_password(body: ForgotPasswordIn) -> None:
+    """Email a reset link, if the account exists."""
+    supabase_auth.request_password_reset(body.email)
+
+
+def reset_password(db: Session, body: ResetPasswordIn) -> tuple[UserOut, AuthSession]:
+    """Set a new password from a reset link, and log in."""
+    session = supabase_auth.reset_password(body.token_hash, body.password)
     return UserOut.model_validate(_ensure_user(db, session)), session
 
 

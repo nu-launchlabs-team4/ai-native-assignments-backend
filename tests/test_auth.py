@@ -389,3 +389,82 @@ def test_logout_always_clears_the_cookies(
     cookies = set_cookies(response)
     assert set(cookies) == {"access_token", "refresh_token"}
     assert all("Max-Age=0" in header for header in cookies.values())
+
+
+# Forgot and reset password
+
+
+@pytest.mark.parametrize(
+    "supabase_result",
+    [httpx.Response(200, json={}), supabase_error(400, "user_not_found", "User not found")],
+    ids=["account-exists", "no-such-account"],
+)
+def test_forgot_password_never_says_whether_the_account_exists(
+    api: TestClient, supabase: Responses, supabase_result: httpx.Response
+) -> None:
+    supabase["/recover"] = supabase_result
+
+    response = api.post("/auth/forgot-password", json={"email": STUDENT_EMAIL})
+
+    assert response.status_code == 204
+
+
+def test_forgot_password_passes_on_rate_limits(api: TestClient, supabase: Responses) -> None:
+    supabase["/recover"] = supabase_error(429, "over_email_send_rate_limit", "Too many emails")
+
+    response = api.post("/auth/forgot-password", json={"email": STUDENT_EMAIL})
+
+    assert response.status_code == 429
+
+
+def test_reset_password_sets_the_password_and_logs_in(
+    api: TestClient, db_session: Session, supabase: Responses, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user_id = add_user(db_session, Role.STUDENT)
+    supabase["/verify"] = httpx.Response(200, json=session_json(user_id, STUDENT_EMAIL))
+    supabase["/user"] = httpx.Response(200, json={"id": str(user_id)})
+    sent: list[httpx.Request] = []
+    real_client = supabase_auth._client
+
+    def recording_client() -> httpx.Client:
+        client = real_client()
+        client.event_hooks["request"].append(sent.append)
+        return client
+
+    monkeypatch.setattr(supabase_auth, "_client", recording_client)
+
+    response = api.post(
+        "/auth/reset-password", json={"token_hash": "hash-1", "password": "new password"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == str(user_id)
+    assert_session_cookies(response)
+    update = next(request for request in sent if request.url.path.endswith("/user"))
+    assert update.method == "PUT"
+    assert update.headers["Authorization"] == "Bearer access-1"
+
+
+def test_reset_password_with_a_used_link_asks_for_a_new_one(
+    api: TestClient, supabase: Responses
+) -> None:
+    supabase["/verify"] = supabase_error(403, "otp_expired", "Token has expired or is invalid")
+
+    response = api.post(
+        "/auth/reset-password", json={"token_hash": "hash-1", "password": "new password"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == (
+        "This reset link has expired or was already used. Request a new one."
+    )
+    assert set_cookies(response) == {}
+
+
+def test_reset_password_rejects_a_short_password_before_using_the_link(
+    api: TestClient, supabase: Responses
+) -> None:
+    response = api.post("/auth/reset-password", json={"token_hash": "hash-1", "password": "short"})
+
+    assert response.status_code == 422
+    assert "/verify" not in supabase
