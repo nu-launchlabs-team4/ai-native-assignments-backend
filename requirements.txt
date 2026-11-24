@@ -9,3 +9,4 @@ pyjwt[crypto]
 pytest
 httpx
 ruff
+anthropic>=0.40.0,<1.0.0
