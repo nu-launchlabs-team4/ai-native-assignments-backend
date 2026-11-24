@@ -1,13 +1,14 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.assignments import service
 from app.assignments.schemas import AssignmentCreate, AssignmentOut, CourseCreate, CourseOut
-from app.core.constants import Role
+from app.core.constants import RATE_LIMIT_PDF_UPLOAD, Role
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.core.security import CurrentUser, require_role
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -42,3 +43,15 @@ def list_assignments(
 @router.get("/{assignment_id}", response_model=AssignmentOut)
 def get_assignment(assignment_id: uuid.UUID, db: DbSession, professor: Professor) -> AssignmentOut:
     return service.get_assignment(db, professor, assignment_id)
+
+
+@router.post("/{assignment_id}/pdf", response_model=AssignmentOut)
+@limiter.limit(RATE_LIMIT_PDF_UPLOAD)
+def upload_assignment_pdf(
+    request: Request,
+    assignment_id: uuid.UUID,
+    file: UploadFile,
+    db: DbSession,
+    professor: Professor,
+) -> AssignmentOut:
+    return service.upload_assignment_pdf(db, professor, assignment_id, file.file)
