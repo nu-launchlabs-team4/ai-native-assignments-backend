@@ -65,3 +65,12 @@ MAX_PDF_MB = 10
 RATE_LIMIT_DEFAULT = "60/minute"
 RATE_LIMIT_AI = "20/minute"
 RATE_LIMIT_PDF_UPLOAD = "10/hour"
+# Sign-up, log-in, refresh and log-out. Low, to slow down password guessing.
+RATE_LIMIT_AUTH = "10/minute"
+
+# Session cookies. The frontend's SESSION_COOKIES uses the same names.
+ACCESS_TOKEN_COOKIE = "access_token"
+REFRESH_TOKEN_COOKIE = "refresh_token"
+# Supabase refresh tokens are single-use and rotate on every refresh, so a long
+# cookie lifetime only keeps an active person logged in.
+REFRESH_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60

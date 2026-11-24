@@ -67,7 +67,8 @@ def api(db_session: Session) -> Iterator[TestClient]:
 
 @pytest.fixture
 def login_as() -> LoginAs:
-    # Supabase JWT checks aren't built yet (#4), so tests replace the signed-in user.
+    # Feature tests skip the cookie and token check (tests/test_auth.py covers it)
+    # and replace the signed-in user directly.
     def log_in(role: Role, user_id: str) -> None:
         app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=user_id, role=role)
 

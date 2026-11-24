@@ -14,11 +14,22 @@ class Settings(BaseSettings):
     supabase_publishable_key: str
     anthropic_api_key: str | None = None  # optional until the AI features land
     allowed_origins: str = "http://localhost:3000"  # comma-separated
+    # Emails that become professors when they sign up or log in. Comma-separated.
+    professor_emails: str = ""
     env: str = "local"
 
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def professor_emails_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.professor_emails.split(",") if e.strip()}
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Session cookies need HTTPS everywhere except a local http:// setup."""
+        return self.env != "local"
 
 
 @lru_cache
