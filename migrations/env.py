@@ -37,6 +37,11 @@ def run_migrations_online() -> None:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
+            # Alembic creates alembic_version itself, so no migration turns on row-level
+            # security for it, and Supabase's public API could then read and change it (#39).
+            connection.exec_driver_sql(
+                "ALTER TABLE IF EXISTS alembic_version ENABLE ROW LEVEL SECURITY"
+            )
 
 
 if context.is_offline_mode():
