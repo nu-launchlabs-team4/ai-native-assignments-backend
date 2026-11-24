@@ -4,6 +4,7 @@ import logging
 import uuid
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -81,8 +82,17 @@ def _ensure_user(db: Session, session: AuthSession) -> User:
     role = Role.PROFESSOR if session.email in get_settings().professor_emails_set else Role.STUDENT
     user = db.get(User, session.user_id)
     if user is None:
-        user = User(id=session.user_id, email=session.email, role=role)
-        db.add(user)
+        # An account deleted in Supabase and created again keeps its email but gets a new
+        # id. Move the old row to the new id (keeping its role) instead of failing on the
+        # unique email.
+        user = db.scalars(select(User).where(User.email == session.email)).first()
+        if user is not None:
+            user.id = session.user_id
+            if role == Role.PROFESSOR:
+                user.role = Role.PROFESSOR
+        else:
+            user = User(id=session.user_id, email=session.email, role=role)
+            db.add(user)
     elif user.role == Role.STUDENT and role == Role.PROFESSOR:
         user.role = Role.PROFESSOR
     else:

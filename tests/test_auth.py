@@ -227,6 +227,24 @@ def test_login_promotes_a_student_added_to_the_allowlist(
     assert response.json()["role"] == "professor"
 
 
+def test_login_relinks_an_account_recreated_in_supabase(
+    api: TestClient, db_session: Session, supabase: Responses
+) -> None:
+    old_id = add_user(db_session, Role.PROFESSOR, PROFESSOR_EMAIL)
+    new_id = uuid.uuid4()
+    supabase["/token?grant_type=password"] = httpx.Response(
+        200, json=session_json(new_id, PROFESSOR_EMAIL)
+    )
+
+    response = api.post("/auth/login", json=credentials(PROFESSOR_EMAIL))
+
+    assert response.status_code == 200
+    assert response.json() == {"id": str(new_id), "email": PROFESSOR_EMAIL, "role": "professor"}
+    db_session.expire_all()
+    assert db_session.get(User, old_id) is None
+    assert db_session.query(User).count() == 1
+
+
 @pytest.mark.parametrize(
     ("error_code", "status_code", "message"),
     [
