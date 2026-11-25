@@ -11,6 +11,7 @@ from enum import StrEnum
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.assignments.join_codes import JOIN_CODE_LENGTH
 from app.core.constants import AIPolicy, AnswerType, FinalCheck, HelpLevel
 from app.core.database import Base
 
@@ -37,11 +38,30 @@ class Course(Base):
     title: Mapped[str] = mapped_column(String(200))
     # The Supabase Auth user id (the JWT "sub"), the same id get_current_user returns.
     professor_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    # What the professor shares so students can join (see join_codes.py). Only they see it.
+    join_code: Mapped[str] = mapped_column(String(JOIN_CODE_LENGTH), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     assignments: Mapped[list["Assignment"]] = relationship(
         back_populates="course", cascade="all, delete-orphan"
     )
+
+
+class Enrollment(Base):
+    """A student in a course. Students see the course's published assignments."""
+
+    __tablename__ = "enrollments"
+    __table_args__ = (UniqueConstraint("course_id", "student_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    # The Supabase Auth user id, like submissions.student_id.
+    student_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    course: Mapped[Course] = relationship()
 
 
 class Assignment(Base):

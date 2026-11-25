@@ -13,11 +13,13 @@ from app.submissions.schemas import (
     AttemptFinish,
     EvaluationSave,
     ExplanationSave,
+    StudentAssignmentOut,
     SubmissionOut,
     SubmissionStart,
 )
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
+student_router = APIRouter(prefix="/student", tags=["student"])
 
 DbSession = Annotated[Session, Depends(get_db)]
 Student = Annotated[CurrentUser, Depends(require_role(Role.STUDENT))]
@@ -81,3 +83,8 @@ def save_explanation(
     submission_id: uuid.UUID, body: ExplanationSave, db: DbSession, student: Student
 ) -> SubmissionOut:
     return service.save_explanation(db, student, submission_id, body)
+
+
+@student_router.get("/assignments", response_model=list[StudentAssignmentOut])
+def list_my_assignments(db: DbSession, student: Student) -> list[StudentAssignmentOut]:
+    return service.list_student_assignments(db, student)

@@ -74,3 +74,17 @@ class SubmissionOut(BaseModel):
     revision_answers: dict[uuid.UUID, str]
     # The assignment and its questions, so the workspace needs one request.
     assignment: AssignmentOut
+
+
+class StudentAssignmentOut(BaseModel):
+    """A published assignment in one of the student's courses, with their progress on it."""
+
+    id: uuid.UUID
+    title: str
+    course_id: uuid.UUID
+    course_title: str
+    published_at: datetime
+    # None until the student opens the assignment.
+    submission_id: uuid.UUID | None
+    status: SubmissionStatus | None
+    current_step: Step | None
