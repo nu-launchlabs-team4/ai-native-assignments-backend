@@ -27,11 +27,16 @@ The AI is a tutor, not an answer machine, and it never judges honesty.
 ## Limits and config
 
 - Apply `@limiter.limit(RATE_LIMIT_AI)` to every route that calls the model.
-- Read the API key only from `get_settings().anthropic_api_key`. Never use `os.environ`, never hardcode it, and never log it.
+- **Call the model only through `get_llm().reply(system, turns, max_tokens)`** from `app/ai/llm.py`. Never import `anthropic` or run the `claude` CLI in a feature. `AI_PROVIDER` picks the model:
+  - `claude_code` (the default): the Claude Code CLI on the developer's own login, with every tool turned off. Local development only (`ENV=local`); in Docker it needs `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
+  - `anthropic`: the API with `ANTHROPIC_API_KEY`, for staging and the showcase.
+  - `fake`: canned tutor-style replies, for tests and offline work.
+- Turn `AIUnavailableError` into a 503 using its message, which is written for the student.
+- Read keys and tokens only through `get_settings()`. Never use `os.environ`, never hardcode them, and never log them.
 
 ## Tests
 
-- **Always mock the LLM.** Tests must run without an API key or network access. Patch the client call in the service and return a fixed reply.
+- **Always mock the LLM.** Tests must run without an API key, Claude Code or network access. `tests/conftest.py` sets `AI_PROVIDER=fake`; to control replies, patch `get_llm` in the service with a model that returns fixed text (see `RecordingModel` in `tests/test_ai.py`).
 - Cover these cases:
   - chat before step 1 returns 403
   - chat during the interview step returns 403

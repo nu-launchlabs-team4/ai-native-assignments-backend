@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,7 +13,12 @@ class Settings(BaseSettings):
     database_url: str
     supabase_url: str
     supabase_publishable_key: str
-    anthropic_api_key: str | None = None  # optional until the AI features land
+    # Which model the AI features use (app/ai/llm.py): claude_code while developing
+    # (local only), anthropic with the API key for staging and the showcase, fake offline.
+    ai_provider: Literal["claude_code", "anthropic", "fake"] = "claude_code"
+    anthropic_api_key: str | None = None
+    # From `claude setup-token`: logs the Claude Code CLI in inside Docker. A secret.
+    claude_code_oauth_token: str | None = None
     allowed_origins: str = "http://localhost:3000"  # comma-separated
     # Emails that become professors when they sign up or log in. Comma-separated.
     professor_emails: str = ""

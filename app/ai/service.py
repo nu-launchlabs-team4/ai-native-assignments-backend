@@ -3,19 +3,18 @@
 import uuid
 from pathlib import Path
 
-import anthropic
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.ai.llm import AIUnavailableError, LanguageModel, Turn, get_llm
 from app.ai.models import ChatMessage
 from app.assignments.models import Assignment
-from app.core.config import get_settings
 from app.core.constants import AIPolicy, Step, SubmissionStatus
 from app.core.security import CurrentUser
 from app.submissions.models import Submission
 
-MODEL = "claude-haiku-4-5-20251001"
+MAX_REPLY_TOKENS = 700
 PROMPT_DIR = Path(__file__).parent / "prompts"
 CHAT_NOT_AVAILABLE = "AI chat is not available for this submission"
 
@@ -70,16 +69,9 @@ def _student_context(submission: Submission) -> str:
     return "\n\n".join(sections)
 
 
-def _response_text(response: anthropic.types.Message) -> str:
-    """Extract text blocks from an Anthropic response."""
-    return "\n".join(block.text for block in response.content if block.type == "text").strip()
-
-
-def _review_reply(client: anthropic.Anthropic, reply: str, context: str) -> str:
+def _review_reply(llm: LanguageModel, reply: str, context: str) -> str:
     """Rewrite a reply that contains a complete assignment solution."""
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=700,
+    reviewed = llm.reply(
         system=(
             "You are an academic-integrity reviewer for an AI tutor. "
             "Review the tutor reply against the assignment and student context. "
@@ -88,18 +80,17 @@ def _review_reply(client: anthropic.Anthropic, reply: str, context: str) -> str:
             "to do the key reasoning themselves. Otherwise preserve its helpful "
             "meaning. Never add a solution. Return only the final student-facing reply."
         ),
-        messages=[
-            {
-                "role": "user",
-                "content": (
+        turns=[
+            Turn(
+                role="user",
+                content=(
                     f"Assignment and student context:\n{context}\n\nTutor reply to review:\n{reply}"
                 ),
-            }
+            )
         ],
+        max_tokens=MAX_REPLY_TOKENS,
     )
-    return _response_text(response) or (
-        "Which part of your approach would you like to examine next?"
-    )
+    return reviewed or "Which part of your approach would you like to examine next?"
 
 
 def send_message(
@@ -139,12 +130,12 @@ def send_message(
             detail=CHAT_NOT_AVAILABLE,
         )
 
-    settings = get_settings()
-    if not settings.anthropic_api_key:
+    try:
+        llm = get_llm()
+    except AIUnavailableError as exc:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI chat is not configured",
-        )
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
 
     prompt = _load_prompt(submission.assignment.help_level.value)
     context = _student_context(submission)
@@ -164,39 +155,29 @@ def send_message(
     db.commit()
 
     history = [
-        {
-            "role": "assistant" if item.role == "assistant" else "user",
-            "content": item.content,
-        }
+        Turn(role="assistant" if item.role == "assistant" else "user", content=item.content)
         for item in previous_messages
     ]
-    history.append({"role": "user", "content": message})
+    history.append(Turn(role="user", content=message))
 
     try:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=700,
+        draft_reply = llm.reply(
             system=(
                 f"{prompt}\n\n"
                 "Use only the assignment and student context supplied below. "
                 "Do not reveal a complete solution.\n\n"
                 f"{context}"
             ),
-            messages=history,
+            turns=history,
+            max_tokens=MAX_REPLY_TOKENS,
         )
-        draft_reply = _response_text(response)
-
         if not draft_reply:
-            raise RuntimeError("The AI tutor returned an empty response")
-
-        reply = _review_reply(client, draft_reply, context)
-
-    except anthropic.APIError as exc:
+            raise AIUnavailableError("The AI tutor returned an empty response")
+        reply = _review_reply(llm, draft_reply, context)
+    except AIUnavailableError as exc:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="The AI tutor is temporarily unavailable",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
         ) from exc
 
     assistant_message = ChatMessage(
