@@ -12,6 +12,7 @@ from app.assignments.schemas import (
     MAX_PROMPT_CHARS,
     MAX_STARTER_CODE_CHARS,
 )
+from app.assignments.service import ALREADY_PUBLISHED
 from app.core.constants import Role
 from app.core.database import Base, get_db
 from app.core.security import CurrentUser, get_current_user
@@ -252,3 +253,112 @@ def test_missing_token_is_unauthorized(api: TestClient) -> None:
     response = api.get("/courses")
 
     assert response.status_code == 401
+
+
+# Update and publish (#33)
+
+
+def update_body() -> dict[str, object]:
+    body = assignment_body("unused")
+    del body["course_id"]
+    body["title"] = "Week 3: Loops, revised"
+    body["help_level"] = "concepts"
+    body["questions"] = [
+        {"prompt": "Explain your approach first.", "answer_type": "text"},
+        {"prompt": "Write count_vowels(text).", "answer_type": "code", "language": "python"},
+    ]
+    return body
+
+
+def test_update_replaces_fields_and_questions_in_order(api: TestClient, login_as: LoginAs) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    assignment = create_assignment(api, create_course(api))
+
+    response = api.patch(f"/assignments/{assignment['id']}", json=update_body())
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["title"] == "Week 3: Loops, revised"
+    assert updated["help_level"] == "concepts"
+    assert [(q["position"], q["prompt"]) for q in updated["questions"]] == [
+        (1, "Explain your approach first."),
+        (2, "Write count_vowels(text)."),
+    ]
+    again = api.get(f"/assignments/{assignment['id']}").json()
+    assert [q["prompt"] for q in again["questions"]] == [q["prompt"] for q in updated["questions"]]
+
+
+def test_update_validates_questions_like_create(api: TestClient, login_as: LoginAs) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    assignment = create_assignment(api, create_course(api))
+    body = update_body()
+    body["questions"] = [{"prompt": "Write code.", "answer_type": "code"}]
+
+    response = api.patch(f"/assignments/{assignment['id']}", json=body)
+
+    assert response.status_code == 422
+
+
+def test_publish_sets_published_at_once(api: TestClient, login_as: LoginAs) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    assignment = create_assignment(api, create_course(api))
+    assert assignment["published_at"] is None
+
+    published = api.post(f"/assignments/{assignment['id']}/publish")
+    again = api.post(f"/assignments/{assignment['id']}/publish")
+
+    assert published.status_code == 200
+    assert published.json()["published_at"] is not None
+    assert again.status_code == 409
+    assert again.json()["error"]["message"] == ALREADY_PUBLISHED
+
+
+def test_published_assignment_cannot_be_edited(api: TestClient, login_as: LoginAs) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    assignment = create_assignment(api, create_course(api))
+    api.post(f"/assignments/{assignment['id']}/publish")
+
+    response = api.patch(f"/assignments/{assignment['id']}", json=update_body())
+
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize("action", ["update", "publish"])
+def test_other_professor_cannot_update_or_publish(
+    api: TestClient, login_as: LoginAs, action: str
+) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    assignment = create_assignment(api, create_course(api))
+    login_as(Role.PROFESSOR, OTHER_PROFESSOR_ID)
+
+    path = f"/assignments/{assignment['id']}"
+    response = (
+        api.patch(path, json=update_body()) if action == "update" else api.post(f"{path}/publish")
+    )
+
+    assert response.status_code == 404
+
+
+def test_student_cannot_publish(api: TestClient, login_as: LoginAs) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    assignment = create_assignment(api, create_course(api))
+    login_as(Role.STUDENT, str(uuid.uuid4()))
+
+    response = api.post(f"/assignments/{assignment['id']}/publish")
+
+    assert response.status_code == 403
+
+
+def test_published_assignment_can_be_started_by_a_student(
+    api: TestClient, login_as: LoginAs
+) -> None:
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    assignment = create_assignment(api, create_course(api))
+    login_as(Role.STUDENT, str(uuid.uuid4()))
+    assert api.post("/submissions", json={"assignment_id": assignment["id"]}).status_code == 404
+
+    login_as(Role.PROFESSOR, PROFESSOR_ID)
+    api.post(f"/assignments/{assignment['id']}/publish")
+    login_as(Role.STUDENT, str(uuid.uuid4()))
+
+    assert api.post("/submissions", json={"assignment_id": assignment["id"]}).status_code == 201
