@@ -55,12 +55,27 @@ class EvaluationVerdict(StrEnum):
     INCORRECT = "incorrect"
 
 
+class ActivityEventType(StrEnum):
+    """What a work session records. Signals that give the professor context, never flags."""
+
+    PASTE = "paste"
+    TAB_LEAVE = "tab_leave"
+    TAB_RETURN = "tab_return"
+    # Recorded by the backend on every answer save; the browser can't send these.
+    SNAPSHOT = "snapshot"
+
+
 class Role(StrEnum):
     STUDENT = "student"
     PROFESSOR = "professor"
 
 
 MAX_PDF_MB = 10
+
+# Work sessions: the most events one request may send, and how long a session can sit
+# idle before the next activity starts a new one.
+MAX_EVENTS_PER_BATCH = 100
+SESSION_IDLE_MINUTES = 30
 
 RATE_LIMIT_DEFAULT = "60/minute"
 RATE_LIMIT_AI = "20/minute"

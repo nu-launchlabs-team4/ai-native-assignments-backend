@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 # Import every feature's models so autogenerate sees their tables.
 import app.ai.models  # noqa: F401
 import app.assignments.models  # noqa: F401
+import app.sessions.models  # noqa: F401
 import app.submissions.models  # noqa: F401
 import app.users.models  # noqa: F401
 from app.core.config import get_settings
