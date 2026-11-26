@@ -1,4 +1,5 @@
-"""Seed demo data: one professor, three students, one course and one published assignment.
+"""Seed demo data: one professor, three students enrolled in one course, and one published
+assignment.
 
 Run it with:
 
@@ -28,7 +29,8 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.assignments.models import Assignment, Course, Question
+from app.assignments.models import Assignment, Course, Enrollment, Question
+from app.assignments.service import unused_join_code
 from app.core.config import get_settings
 from app.core.constants import AIPolicy, AnswerType, FinalCheck, HelpLevel, Role
 from app.core.database import SessionLocal
@@ -111,6 +113,7 @@ class SeedResult:
     professor_id: uuid.UUID
     student_ids: tuple[uuid.UUID, ...]
     course_id: uuid.UUID
+    join_code: str
     assignment_id: uuid.UUID
 
 
@@ -162,9 +165,12 @@ def seed(db: Session, auth: AuthAdmin, password: str) -> SeedResult:
         select(Course).where(Course.professor_id == professor_id, Course.title == COURSE_TITLE)
     )
     if course is None:
-        course = Course(title=COURSE_TITLE, professor_id=professor_id)
+        course = Course(
+            title=COURSE_TITLE, professor_id=professor_id, join_code=unused_join_code(db)
+        )
         db.add(course)
         db.flush()
+    _enroll(db, course, student_ids)
 
     assignment = db.scalar(
         select(Assignment).where(
@@ -191,7 +197,17 @@ def seed(db: Session, auth: AuthAdmin, password: str) -> SeedResult:
         assignment.published_at = datetime.now(UTC)
 
     db.commit()
-    return SeedResult(professor_id, student_ids, course.id, assignment.id)
+    return SeedResult(professor_id, student_ids, course.id, course.join_code, assignment.id)
+
+
+def _enroll(db: Session, course: Course, student_ids: tuple[uuid.UUID, ...]) -> None:
+    """Enroll the demo students, so the assignment shows up in their list."""
+    enrolled = set(
+        db.scalars(select(Enrollment.student_id).where(Enrollment.course_id == course.id))
+    )
+    for student_id in student_ids:
+        if student_id not in enrolled:
+            db.add(Enrollment(course_id=course.id, student_id=student_id))
 
 
 def _ensure_account(db: Session, auth: AuthAdmin, demo: DemoUser, password: str) -> uuid.UUID:
@@ -246,6 +262,7 @@ def main() -> None:
     for student in STUDENTS:
         logger.info("Student:   %s", student.email)
     logger.info("Course:    %s (%s)", COURSE_TITLE, result.course_id)
+    logger.info("Join code: %s (the demo students are already enrolled)", result.join_code)
     logger.info("Assignment: %s (%s)", ASSIGNMENT_TITLE, result.assignment_id)
 
 

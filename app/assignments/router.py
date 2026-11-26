@@ -11,6 +11,8 @@ from app.assignments.schemas import (
     AssignmentUpdate,
     CourseCreate,
     CourseOut,
+    EnrollmentOut,
+    JoinCourseIn,
 )
 from app.core.constants import RATE_LIMIT_PDF_UPLOAD, Role
 from app.core.database import get_db
@@ -22,6 +24,7 @@ courses_router = APIRouter(prefix="/courses", tags=["courses"])
 
 DbSession = Annotated[Session, Depends(get_db)]
 Professor = Annotated[CurrentUser, Depends(require_role(Role.PROFESSOR))]
+Student = Annotated[CurrentUser, Depends(require_role(Role.STUDENT))]
 
 
 @courses_router.post("", response_model=CourseOut, status_code=status.HTTP_201_CREATED)
@@ -32,6 +35,11 @@ def create_course(body: CourseCreate, db: DbSession, professor: Professor) -> Co
 @courses_router.get("", response_model=list[CourseOut])
 def list_courses(db: DbSession, professor: Professor) -> list[CourseOut]:
     return service.list_courses(db, professor)
+
+
+@courses_router.post("/join", response_model=EnrollmentOut)
+def join_course(body: JoinCourseIn, db: DbSession, student: Student) -> EnrollmentOut:
+    return service.join_course(db, student, body)
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)

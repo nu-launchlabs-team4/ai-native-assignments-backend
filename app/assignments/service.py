@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 from typing import BinaryIO
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.assignments import storage
-from app.assignments.models import Assignment, Course, Question
+from app.assignments.join_codes import new_join_code, normalize_join_code
+from app.assignments.models import Assignment, Course, Enrollment, Question
 from app.assignments.schemas import (
     AssignmentCreate,
     AssignmentFields,
@@ -18,6 +20,8 @@ from app.assignments.schemas import (
     AssignmentUpdate,
     CourseCreate,
     CourseOut,
+    EnrollmentOut,
+    JoinCourseIn,
 )
 from app.core.constants import MAX_PDF_MB
 from app.core.security import CurrentUser
@@ -27,6 +31,7 @@ logger = logging.getLogger(__name__)
 COURSE_NOT_FOUND = "Course not found"
 ASSIGNMENT_NOT_FOUND = "Assignment not found"
 ALREADY_PUBLISHED = "This assignment is published, so it can't be changed"
+UNKNOWN_JOIN_CODE = "No course has that code. Check it with your professor."
 PDF_TOO_LARGE = f"PDF must be {MAX_PDF_MB} MB or smaller"
 NOT_A_PDF = "File must be a PDF"
 PDF_STORAGE_FAILED = "Could not store the PDF. Try again later."
@@ -37,8 +42,10 @@ PDF_SIGNATURE = b"%PDF-"
 
 
 def create_course(db: Session, professor: CurrentUser, body: CourseCreate) -> CourseOut:
-    """Create a course owned by this professor."""
-    course = Course(title=body.title, professor_id=_user_uuid(professor))
+    """Create a course owned by this professor, with a fresh join code."""
+    course = Course(
+        title=body.title, professor_id=_user_uuid(professor), join_code=unused_join_code(db)
+    )
     db.add(course)
     db.commit()
     db.refresh(course)
@@ -47,13 +54,47 @@ def create_course(db: Session, professor: CurrentUser, body: CourseCreate) -> Co
 
 
 def list_courses(db: Session, professor: CurrentUser) -> list[CourseOut]:
-    """List this professor's courses, oldest first."""
-    courses = db.scalars(
-        select(Course)
+    """List this professor's courses, oldest first, with how many students joined each."""
+    student_count = (
+        select(func.count(Enrollment.id))
+        .where(Enrollment.course_id == Course.id)
+        .correlate(Course)
+        .scalar_subquery()
+    )
+    rows = db.execute(
+        select(Course, student_count)
         .where(Course.professor_id == _user_uuid(professor))
         .order_by(Course.created_at, Course.id)
     )
-    return [CourseOut.model_validate(course) for course in courses]
+    return [
+        CourseOut.model_validate(course).model_copy(update={"student_count": count})
+        for course, count in rows
+    ]
+
+
+def join_course(db: Session, student: CurrentUser, body: JoinCourseIn) -> EnrollmentOut:
+    """Join a course by its code. Joining again returns the same enrollment."""
+    course = db.scalar(select(Course).where(Course.join_code == normalize_join_code(body.code)))
+    if course is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=UNKNOWN_JOIN_CODE)
+    student_id = _user_uuid(student)
+    enrollment = _find_enrollment(db, course.id, student_id)
+    if enrollment is None:
+        db.add(Enrollment(course_id=course.id, student_id=student_id))
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two joins at once: the other request created it.
+            db.rollback()
+        enrollment = _find_enrollment(db, course.id, student_id)
+        if enrollment is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Couldn't join. Try again"
+            )
+        logger.info("Student joined course_id=%s", course.id)
+    return EnrollmentOut(
+        course_id=course.id, course_title=course.title, joined_at=enrollment.joined_at
+    )
 
 
 def create_assignment(db: Session, professor: CurrentUser, body: AssignmentCreate) -> AssignmentOut:
@@ -194,6 +235,23 @@ def _require_draft(assignment: Assignment) -> None:
     # Students may already be working on a published assignment, so it stays as it is.
     if assignment.published_at is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ALREADY_PUBLISHED)
+
+
+def unused_join_code(db: Session) -> str:
+    """A join code no course has yet. Also used by the demo seed script."""
+    # About 500 billion codes, so a clash is rare; the unique constraint is the backstop.
+    while True:
+        code = new_join_code()
+        if db.scalar(select(Course.id).where(Course.join_code == code)) is None:
+            return code
+
+
+def _find_enrollment(db: Session, course_id: uuid.UUID, student_id: uuid.UUID) -> Enrollment | None:
+    return db.scalar(
+        select(Enrollment).where(
+            Enrollment.course_id == course_id, Enrollment.student_id == student_id
+        )
+    )
 
 
 def _get_owned_course(db: Session, professor: CurrentUser, course_id: uuid.UUID) -> Course:

@@ -5,7 +5,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.assignments.models import Assignment, Course, Question
+from app.assignments.models import Assignment, Course, Enrollment, Question
 from app.core.constants import AnswerType, Role
 from app.seed import (
     PROFESSOR,
@@ -51,6 +51,11 @@ def test_seed_creates_the_demo_data(db_session: Session) -> None:
     course = db_session.get(Course, result.course_id)
     assert course is not None
     assert course.professor_id == result.professor_id
+    assert course.join_code == result.join_code
+    enrolled = db_session.scalars(
+        select(Enrollment.student_id).where(Enrollment.course_id == course.id)
+    )
+    assert set(enrolled) == set(result.student_ids)
     assignment = db_session.get(Assignment, result.assignment_id)
     assert assignment is not None
     assert assignment.published_at is not None
@@ -71,6 +76,7 @@ def test_seed_is_safe_to_rerun(db_session: Session) -> None:
     assert second == first
     assert count(db_session, User) == 4
     assert count(db_session, Course) == 1
+    assert count(db_session, Enrollment) == 3
     assert count(db_session, Assignment) == 1
     assert count(db_session, Question) == 3
 

@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.assignments.models import Assignment
+from app.assignments.models import Assignment, Course, Enrollment
 from app.core.constants import Step, SubmissionStatus
 from app.core.security import CurrentUser
 from app.submissions.models import StepEntry, Submission
@@ -24,6 +24,7 @@ from app.submissions.schemas import (
     AttemptFinish,
     EvaluationSave,
     ExplanationSave,
+    StudentAssignmentOut,
     SubmissionOut,
 )
 
@@ -154,6 +155,38 @@ def save_explanation(
     db.refresh(submission)
     logger.info("Submission submitted submission_id=%s", submission.id)
     return SubmissionOut.model_validate(submission)
+
+
+def list_student_assignments(db: Session, student: CurrentUser) -> list[StudentAssignmentOut]:
+    """Published assignments in the student's courses, newest first, with their progress."""
+    student_id = _user_uuid(student)
+    rows = db.execute(
+        select(Assignment, Course.title, Submission)
+        .join(Course, Course.id == Assignment.course_id)
+        .join(
+            Enrollment,
+            (Enrollment.course_id == Assignment.course_id) & (Enrollment.student_id == student_id),
+        )
+        .outerjoin(
+            Submission,
+            (Submission.assignment_id == Assignment.id) & (Submission.student_id == student_id),
+        )
+        .where(Assignment.published_at.is_not(None))
+        .order_by(Assignment.published_at.desc(), Assignment.id)
+    )
+    return [
+        StudentAssignmentOut(
+            id=assignment.id,
+            title=assignment.title,
+            course_id=assignment.course_id,
+            course_title=course_title,
+            published_at=assignment.published_at,
+            submission_id=submission.id if submission else None,
+            status=submission.status if submission else None,
+            current_step=submission.current_step if submission else None,
+        )
+        for assignment, course_title, submission in rows
+    ]
 
 
 def _find_submission(

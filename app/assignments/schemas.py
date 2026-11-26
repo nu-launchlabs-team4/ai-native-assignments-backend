@@ -20,11 +20,28 @@ class CourseCreate(BaseModel):
 
 
 class CourseOut(BaseModel):
+    """A course as its professor sees it, with the code students join with."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     title: str
+    join_code: str
+    student_count: int = 0
     created_at: datetime
+
+
+class JoinCourseIn(BaseModel):
+    # Generous: students may type spaces or leave out the dash (see normalize_join_code).
+    code: str = Field(min_length=4, max_length=32)
+
+
+class EnrollmentOut(BaseModel):
+    """The course a student joined. It never includes the join code."""
+
+    course_id: uuid.UUID
+    course_title: str
+    joined_at: datetime
 
 
 class QuestionCreate(BaseModel):
