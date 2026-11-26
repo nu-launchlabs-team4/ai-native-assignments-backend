@@ -8,6 +8,7 @@ from app.assignments import service
 from app.assignments.schemas import (
     AssignmentCreate,
     AssignmentOut,
+    AssignmentUpdate,
     CourseCreate,
     CourseOut,
     EnrollmentOut,
@@ -56,6 +57,20 @@ def list_assignments(
 @router.get("/{assignment_id}", response_model=AssignmentOut)
 def get_assignment(assignment_id: uuid.UUID, db: DbSession, professor: Professor) -> AssignmentOut:
     return service.get_assignment(db, professor, assignment_id)
+
+
+@router.patch("/{assignment_id}", response_model=AssignmentOut)
+def update_assignment(
+    assignment_id: uuid.UUID, body: AssignmentUpdate, db: DbSession, professor: Professor
+) -> AssignmentOut:
+    return service.update_assignment(db, professor, assignment_id, body)
+
+
+@router.post("/{assignment_id}/publish", response_model=AssignmentOut)
+def publish_assignment(
+    assignment_id: uuid.UUID, db: DbSession, professor: Professor
+) -> AssignmentOut:
+    return service.publish_assignment(db, professor, assignment_id)
 
 
 @router.post("/{assignment_id}/pdf", response_model=AssignmentOut)

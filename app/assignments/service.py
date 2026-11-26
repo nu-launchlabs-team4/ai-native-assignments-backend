@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import BinaryIO
 
 from fastapi import HTTPException, status
@@ -14,7 +15,9 @@ from app.assignments.join_codes import new_join_code, normalize_join_code
 from app.assignments.models import Assignment, Course, Enrollment, Question
 from app.assignments.schemas import (
     AssignmentCreate,
+    AssignmentFields,
     AssignmentOut,
+    AssignmentUpdate,
     CourseCreate,
     CourseOut,
     EnrollmentOut,
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 COURSE_NOT_FOUND = "Course not found"
 ASSIGNMENT_NOT_FOUND = "Assignment not found"
+ALREADY_PUBLISHED = "This assignment is published, so it can't be changed"
 UNKNOWN_JOIN_CODE = "No course has that code. Check it with your professor."
 PDF_TOO_LARGE = f"PDF must be {MAX_PDF_MB} MB or smaller"
 NOT_A_PDF = "File must be a PDF"
@@ -103,16 +107,7 @@ def create_assignment(db: Session, professor: CurrentUser, body: AssignmentCreat
         ai_policy=body.ai_policy,
         help_level=body.help_level,
         final_check=body.final_check,
-        questions=[
-            Question(
-                position=position,
-                prompt=question.prompt,
-                answer_type=question.answer_type,
-                language=question.language,
-                starter_code=question.starter_code,
-            )
-            for position, question in enumerate(body.questions, start=1)
-        ],
+        questions=_questions(body),
     )
     db.add(assignment)
     db.commit()
@@ -139,11 +134,60 @@ def get_assignment(db: Session, professor: CurrentUser, assignment_id: uuid.UUID
     return AssignmentOut.model_validate(_get_owned_assignment(db, professor, assignment_id))
 
 
+def update_assignment(
+    db: Session, professor: CurrentUser, assignment_id: uuid.UUID, body: AssignmentUpdate
+) -> AssignmentOut:
+    """Save a draft's edits. The questions replace the old list, in the order given."""
+    assignment = _get_owned_assignment(db, professor, assignment_id)
+    _require_draft(assignment)
+    assignment.title = body.title
+    assignment.instructions = body.instructions
+    assignment.ai_policy = body.ai_policy
+    assignment.help_level = body.help_level
+    assignment.final_check = body.final_check
+    # Positions are unique per assignment, so the old questions go before the new ones
+    # arrive. Drafts have no submissions, so no student answers point at them.
+    assignment.questions.clear()
+    db.flush()
+    assignment.questions.extend(_questions(body))
+    db.commit()
+    db.refresh(assignment)
+    logger.info("Assignment updated assignment_id=%s", assignment.id)
+    return AssignmentOut.model_validate(assignment)
+
+
+def publish_assignment(
+    db: Session, professor: CurrentUser, assignment_id: uuid.UUID
+) -> AssignmentOut:
+    """Publish a draft so students can start it. It can't be edited after this."""
+    assignment = _get_owned_assignment(db, professor, assignment_id)
+    _require_draft(assignment)
+    assignment.published_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(assignment)
+    logger.info("Assignment published assignment_id=%s", assignment.id)
+    return AssignmentOut.model_validate(assignment)
+
+
+def _questions(body: AssignmentFields) -> list[Question]:
+    return [
+        Question(
+            position=position,
+            prompt=question.prompt,
+            answer_type=question.answer_type,
+            language=question.language,
+            starter_code=question.starter_code,
+        )
+        for position, question in enumerate(body.questions, start=1)
+    ]
+
+
 def upload_assignment_pdf(
     db: Session, professor: CurrentUser, assignment_id: uuid.UUID, file: BinaryIO
 ) -> AssignmentOut:
     """Store a PDF for one of this professor's assignments and record where it is."""
     assignment = _get_owned_assignment(db, professor, assignment_id)
+    _require_draft(assignment)
     content = _read_pdf(file)
 
     # A new name per upload, so a replaced PDF never overwrites the old file mid-read.
@@ -185,6 +229,12 @@ def _get_owned_assignment(
     if assignment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ASSIGNMENT_NOT_FOUND)
     return assignment
+
+
+def _require_draft(assignment: Assignment) -> None:
+    # Students may already be working on a published assignment, so it stays as it is.
+    if assignment.published_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ALREADY_PUBLISHED)
 
 
 def unused_join_code(db: Session) -> str:
