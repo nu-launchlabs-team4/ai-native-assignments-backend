@@ -143,3 +143,15 @@ def test_uploads_are_rate_limited(api: TestClient, login_as: LoginAs) -> None:
     response = upload(api, assignment_id)
 
     assert response.status_code == 429
+
+
+def test_published_assignment_keeps_its_pdf(
+    api: TestClient, login_as: LoginAs, uploaded: dict[str, bytes]
+) -> None:
+    assignment_id = professors_assignment_id(api, login_as)
+    assert api.post(f"/assignments/{assignment_id}/publish").status_code == 200
+
+    response = upload(api, assignment_id)
+
+    assert response.status_code == 409
+    assert uploaded == {}
