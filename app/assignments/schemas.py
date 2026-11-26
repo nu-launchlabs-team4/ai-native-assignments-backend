@@ -70,8 +70,9 @@ class QuestionOut(BaseModel):
     starter_code: str | None
 
 
-class AssignmentCreate(BaseModel):
-    course_id: uuid.UUID
+class AssignmentFields(BaseModel):
+    """What a professor sets on an assignment, when creating it or editing a draft."""
+
     title: str = Field(min_length=1, max_length=200)
     instructions: str = Field(default="", max_length=MAX_INSTRUCTIONS_CHARS)
     ai_policy: AIPolicy = AIPolicy.PERMITTED
@@ -79,6 +80,14 @@ class AssignmentCreate(BaseModel):
     final_check: FinalCheck = FinalCheck.AI_INTERVIEW
     # Questions are saved in the order given here.
     questions: list[QuestionCreate] = Field(min_length=1, max_length=MAX_QUESTIONS)
+
+
+class AssignmentCreate(AssignmentFields):
+    course_id: uuid.UUID
+
+
+class AssignmentUpdate(AssignmentFields):
+    """PATCH /assignments/{id}: every field, with the questions replacing the old list in order."""
 
 
 class AssignmentOut(BaseModel):
