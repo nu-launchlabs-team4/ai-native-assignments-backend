@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     database_url: str
     supabase_url: str
     supabase_publishable_key: str
+    # Server-only key that can write to Storage. Optional so the app starts without it.
+    supabase_service_role_key: str | None = None
+    supabase_pdf_bucket: str = "assignment-pdfs"
     # Which model the AI features use (app/ai/llm.py): claude_code while developing
     # (local only), anthropic with the API key for staging and the showcase, fake offline.
     ai_provider: Literal["claude_code", "anthropic", "fake"] = "claude_code"
