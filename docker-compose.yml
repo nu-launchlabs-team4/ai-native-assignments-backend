@@ -1,6 +1,10 @@
 services:
   api:
-    build: .
+    build:
+      context: .
+      args:
+        # The Claude Code CLI for AI_PROVIDER=claude_code (local development only).
+        INSTALL_CLAUDE_CODE: "true"
     env_file: .env
     ports:
       - "8010:8000"

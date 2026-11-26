@@ -2,8 +2,8 @@
 
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.ai import service
+from app.ai.llm import Turn
 from app.ai.models import ChatMessage
 from app.assignments.models import Assignment
 from app.core.constants import HelpLevel, Role
@@ -40,27 +41,23 @@ def ready_submission(
     return assignment, submission
 
 
-def fake_response(text: str) -> SimpleNamespace:
-    """Build a small Anthropic-like text response for tests."""
-    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
+@dataclass
+class RecordingModel:
+    """Stands in for the language model: returns the given replies in order, records each call."""
+
+    replies: list[str]
+    calls: list[tuple[str, list[Turn]]] = field(default_factory=list)
+
+    def reply(self, system: str, turns: list[Turn], max_tokens: int) -> str:
+        self.calls.append((system, list(turns)))
+        return self.replies[len(self.calls) - 1]
 
 
-def mock_anthropic(monkeypatch: pytest.MonkeyPatch, replies: list[str]) -> MagicMock:
-    """Replace Anthropic with a mock that returns the supplied replies."""
-    client = MagicMock()
-    client.messages.create.side_effect = [fake_response(reply) for reply in replies]
-
-    monkeypatch.setattr(
-        service.anthropic,
-        "Anthropic",
-        lambda **kwargs: client,
-    )
-    monkeypatch.setattr(
-        service,
-        "get_settings",
-        lambda: SimpleNamespace(anthropic_api_key="test-key"),
-    )
-    return client
+def mock_llm(monkeypatch: pytest.MonkeyPatch, replies: list[str]) -> RecordingModel:
+    """Make the tutor use a model that returns the supplied replies."""
+    model = RecordingModel(replies)
+    monkeypatch.setattr(service, "get_llm", lambda: model)
+    return model
 
 
 def test_chat_is_forbidden_before_attempt_is_submitted(
@@ -96,7 +93,7 @@ def test_chat_uses_assignment_help_level_and_logs_both_messages(
     )
     db_session.commit()
 
-    client = mock_anthropic(
+    llm = mock_llm(
         monkeypatch,
         ["Break the task into smaller steps.", "Break the task into smaller steps."],
     )
@@ -110,7 +107,7 @@ def test_chat_uses_assignment_help_level_and_logs_both_messages(
     assert response.status_code == 200
     assert response.json()["reply"] == "Break the task into smaller steps."
 
-    tutor_system_prompt = client.messages.create.call_args_list[0].kwargs["system"]
+    tutor_system_prompt = llm.calls[0][0]
     assert "APPROACH" in tutor_system_prompt
 
     messages = db_session.scalars(
@@ -145,7 +142,7 @@ def test_chat_sends_only_the_current_students_work(
     other_answers[first_question_id] = "PRIVATE_OTHER_STUDENT_SENTINEL"
     finish_attempt(api, other_submission["id"], other_answers)
 
-    client = mock_anthropic(
+    llm = mock_llm(
         monkeypatch,
         ["Which part would you like to examine?", "Which part would you like to examine?"],
     )
@@ -157,7 +154,7 @@ def test_chat_sends_only_the_current_students_work(
     )
 
     assert response.status_code == 200
-    tutor_system_prompt = client.messages.create.call_args_list[0].kwargs["system"]
+    tutor_system_prompt = llm.calls[0][0]
     assert "PRIVATE_CURRENT_STUDENT_SENTINEL" in tutor_system_prompt
     assert "PRIVATE_OTHER_STUDENT_SENTINEL" not in tutor_system_prompt
 
@@ -182,7 +179,7 @@ def test_complete_solution_is_rewritten_as_a_hint(
 ) -> None:
     """A complete tutor solution is replaced by the review response."""
     _, submission = ready_submission
-    mock_anthropic(
+    mock_llm(
         monkeypatch,
         [
             "Here is the complete function: def solve(): return 42",

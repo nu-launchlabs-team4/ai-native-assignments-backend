@@ -25,7 +25,7 @@ app/
   users/            users and auth (/auth routes, Supabase calls, session cookies)
   assignments/      courses and assignments
   submissions/      submissions and step entries
-  ai/               AI tutor chat and generation
+  ai/               AI tutor chat and generation; llm.py picks the model (AI_PROVIDER)
   sessions/         work sessions and activity events
   main.py           builds the app, adds middleware, includes routers, /health
 tests/
@@ -78,6 +78,7 @@ docker compose run --rm api pytest
 - Use type hints everywhere.
 - Every route gets a test. Mock the database and the LLM so tests run without Supabase or API keys.
 - Never commit secrets, and never print, cat or log `.env`. This repo is public.
+- AI features call the model only through `get_llm()` in `app/ai/llm.py`. `AI_PROVIDER=claude_code` (the default) uses your own Claude Code login with every tool off, for local development only; `anthropic` uses `ANTHROPIC_API_KEY` for staging and the showcase; `fake` gives canned replies (the tests use it). See the `ai-feature` skill.
 - The AI never returns full solutions, and it never produces cheating scores. Review priority is always `routine`, `worth_reviewing` or `needs_conversation`, with reasons.
 - Keep PRs small, with one feature each.
 - Branch names follow `type/issue-number-short-name`, where `type` is `feature`, `fix`, `chore` or `docs`. For example, `feature/10-ai-chat`. Never commit to `main`. See the `git-workflow` skill.

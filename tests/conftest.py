@@ -8,6 +8,8 @@ import pytest
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://user:pass@localhost:5432/test")
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_PUBLISHABLE_KEY", "test-key")
+# Tests never shell out to Claude Code or call the API: the AI uses canned replies.
+os.environ["AI_PROVIDER"] = "fake"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
