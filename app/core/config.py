@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     database_url: str
     supabase_url: str
     supabase_publishable_key: str
+    # Server-only key that can write to Storage. Optional so the app starts without it.
+    supabase_service_role_key: str | None = None
+    supabase_pdf_bucket: str = "assignment-pdfs"
     anthropic_api_key: str | None = None  # optional until the AI features land
     allowed_origins: str = "http://localhost:3000"  # comma-separated
     # Emails that become professors when they sign up or log in. Comma-separated.
