@@ -6,6 +6,7 @@ psycopg[binary]
 pydantic-settings
 slowapi
 pyjwt[crypto]
+python-multipart
 pytest
 httpx
 ruff

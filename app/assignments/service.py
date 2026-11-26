@@ -3,11 +3,13 @@
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import BinaryIO
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.assignments import storage
 from app.assignments.models import Assignment, Course, Question
 from app.assignments.schemas import (
     AssignmentCreate,
@@ -17,6 +19,7 @@ from app.assignments.schemas import (
     CourseCreate,
     CourseOut,
 )
+from app.core.constants import MAX_PDF_MB
 from app.core.security import CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,13 @@ logger = logging.getLogger(__name__)
 COURSE_NOT_FOUND = "Course not found"
 ASSIGNMENT_NOT_FOUND = "Assignment not found"
 ALREADY_PUBLISHED = "This assignment is published, so it can't be changed"
+PDF_TOO_LARGE = f"PDF must be {MAX_PDF_MB} MB or smaller"
+NOT_A_PDF = "File must be a PDF"
+PDF_STORAGE_FAILED = "Could not store the PDF. Try again later."
+
+MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024
+# Every PDF file starts with these bytes, whatever its name or claimed content type says.
+PDF_SIGNATURE = b"%PDF-"
 
 
 def create_course(db: Session, professor: CurrentUser, body: CourseCreate) -> CourseOut:
@@ -131,10 +141,45 @@ def _questions(body: AssignmentFields) -> list[Question]:
     ]
 
 
+def upload_assignment_pdf(
+    db: Session, professor: CurrentUser, assignment_id: uuid.UUID, file: BinaryIO
+) -> AssignmentOut:
+    """Store a PDF for one of this professor's assignments and record where it is."""
+    assignment = _get_owned_assignment(db, professor, assignment_id)
+    _require_draft(assignment)
+    content = _read_pdf(file)
+
+    # A new name per upload, so a replaced PDF never overwrites the old file mid-read.
+    path = f"assignments/{assignment.id}/{uuid.uuid4()}.pdf"
+    try:
+        storage.upload_pdf(path, content)
+    except storage.StorageError as error:
+        logger.error("PDF upload failed assignment_id=%s reason=%s", assignment.id, error)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=PDF_STORAGE_FAILED
+        ) from error
+
+    assignment.source_pdf = path
+    db.commit()
+    db.refresh(assignment)
+    logger.info("Assignment PDF uploaded assignment_id=%s", assignment.id)
+    return AssignmentOut.model_validate(assignment)
+
+
+def _read_pdf(file: BinaryIO) -> bytes:
+    # Read one byte past the limit, so an oversized file is caught without loading all of it.
+    content = file.read(MAX_PDF_BYTES + 1)
+    if len(content) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=PDF_TOO_LARGE)
+    if not content.startswith(PDF_SIGNATURE):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=NOT_A_PDF)
+    return content
+
+
 def _get_owned_assignment(
     db: Session, professor: CurrentUser, assignment_id: uuid.UUID
 ) -> Assignment:
-    # Another professor's assignment is a 404, like a course, so ids can't be probed.
+    # Another professor's assignment is a 404, not a 403, so ids can't be probed.
     assignment = db.scalar(
         select(Assignment)
         .join(Course)
