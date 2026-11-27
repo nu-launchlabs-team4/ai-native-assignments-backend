@@ -21,6 +21,7 @@ from app.core.middleware import (
 )
 from app.core.rate_limit import limiter
 from app.sessions.router import router as sessions_router
+from app.sessions.router import submission_sessions_router
 from app.submissions.router import router as submissions_router
 from app.submissions.router import student_router
 from app.users.router import auth_router
@@ -59,6 +60,7 @@ for router in (
     student_router,
     ai_router,
     sessions_router,
+    submission_sessions_router,
 ):
     app.include_router(router)
 

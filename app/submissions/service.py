@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.assignments.models import Assignment, Course, Enrollment
 from app.core.constants import Step, SubmissionStatus
 from app.core.security import CurrentUser
+from app.sessions import service as sessions_service
 from app.submissions.models import StepEntry, Submission
 from app.submissions.schemas import (
     AnswerMap,
@@ -92,6 +93,9 @@ def save_answers(
     _require_step(submission, step)
     _check_question_ids(submission, answers.keys())
     _upsert_answers(submission, step, answers)
+    # Every save leaves a snapshot in the work session, so the professor can see how the
+    # answers developed. Recorded here, not by the browser, so it can't be faked.
+    sessions_service.record_snapshot(db, submission, step, answers)
     db.commit()
     db.refresh(submission)
     return SubmissionOut.model_validate(submission)
