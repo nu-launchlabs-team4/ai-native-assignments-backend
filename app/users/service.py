@@ -16,6 +16,7 @@ from app.users.models import User
 from app.users.schemas import (
     ForgotPasswordIn,
     LoginIn,
+    ResendConfirmationIn,
     ResetPasswordIn,
     SignupIn,
     SignupOut,
@@ -52,6 +53,11 @@ def refresh(db: Session, refresh_token: str | None) -> tuple[UserOut, AuthSessio
 def forgot_password(body: ForgotPasswordIn) -> None:
     """Email a reset link, if the account exists."""
     supabase_auth.request_password_reset(body.email)
+
+
+def resend_confirmation(body: ResendConfirmationIn) -> None:
+    """Email the confirmation link again, if there's an unconfirmed account."""
+    supabase_auth.resend_confirmation(body.email)
 
 
 def reset_password(db: Session, body: ResetPasswordIn) -> tuple[UserOut, AuthSession]:

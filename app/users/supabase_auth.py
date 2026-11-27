@@ -91,6 +91,17 @@ def request_password_reset(email: str) -> None:
         # Any other answer could reveal whether the email has an account, so it's not shown.
 
 
+def resend_confirmation(email: str) -> None:
+    """Email the sign-up confirmation link again. Says nothing about whether the account exists."""
+    try:
+        _request("POST", "/resend", {"type": "signup", "email": email})
+    except HTTPException as exc:
+        if exc.status_code in _PASS_THROUGH:
+            raise
+        # Any other answer could reveal whether the email has an account, or whether
+        # it's already confirmed, so it's not shown.
+
+
 def reset_password(token_hash: str, password: str) -> AuthSession:
     """Use a reset link's one-time code to log in, then set the new password."""
     try:
