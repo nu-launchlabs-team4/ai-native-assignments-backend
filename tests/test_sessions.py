@@ -10,7 +10,7 @@ from app.core.constants import Role
 from app.sessions import service as sessions_service
 from app.sessions.models import WorkSession
 from app.users.models import User
-from tests.conftest import LoginAs
+from tests.conftest import LoginAs, enroll
 
 PROFESSOR_ID = str(uuid.uuid4())
 STUDENT_ID = str(uuid.uuid4())
@@ -30,6 +30,7 @@ def start_submission(api: TestClient, login_as: LoginAs, db_session: Session) ->
     db_session.get(Assignment, uuid.UUID(assignment["id"])).published_at = datetime.now(UTC)
     db_session.add(User(id=uuid.UUID(STUDENT_ID), email="student@uni.edu", role=Role.STUDENT))
     db_session.commit()
+    enroll(db_session, course_id, STUDENT_ID)
     login_as(Role.STUDENT, STUDENT_ID)
     return api.post("/submissions", json={"assignment_id": assignment["id"]}).json()
 

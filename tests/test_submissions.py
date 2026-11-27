@@ -5,11 +5,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import update
+from sqlalchemy import delete, update
 from sqlalchemy.orm import Session
 
-from app.assignments.models import Assignment
+from app.assignments.models import Assignment, Enrollment
 from app.core.constants import Role
+from tests.conftest import enroll
 
 LoginAs = Callable[[Role, str], None]
 Json = dict[str, Any]
@@ -24,9 +25,17 @@ MATH_ANSWER = "T(n) = 3n + 2n + 5\nT(n) = 5n + 5"
 
 
 def make_assignment(
-    api: TestClient, login_as: LoginAs, db_session: Session, *, published: bool = True
+    api: TestClient,
+    login_as: LoginAs,
+    db_session: Session,
+    *,
+    published: bool = True,
+    enrolled: tuple[str, ...] = (STUDENT_ID, OTHER_STUDENT_ID),
 ) -> Json:
-    """Create an assignment with a code, a text and a math question, as the professor."""
+    """Create an assignment with a code, a text and a math question, as the professor.
+
+    The students in `enrolled` have joined its course, so they can start it.
+    """
     login_as(Role.PROFESSOR, PROFESSOR_ID)
     course = api.post("/courses", json={"title": "Intro to Programming"}).json()
     response = api.post(
@@ -42,6 +51,7 @@ def make_assignment(
         },
     )
     assignment = response.json()
+    enroll(db_session, course["id"], *enrolled)
     if published:
         # There is no publish endpoint yet, so publish it in the database directly.
         db_session.execute(
@@ -116,6 +126,32 @@ def test_draft_assignment_is_hidden_from_students(
     response = api.post("/submissions", json={"assignment_id": draft["id"]})
 
     assert response.status_code == 404
+
+
+def test_student_outside_the_course_cannot_start_it(
+    api: TestClient, login_as: LoginAs, db_session: Session
+) -> None:
+    assignment = make_assignment(api, login_as, db_session, enrolled=())
+    login_as(Role.STUDENT, STUDENT_ID)
+
+    response = api.post("/submissions", json={"assignment_id": assignment["id"]})
+
+    # The same answer as for an id that doesn't exist.
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Assignment not found"
+
+
+def test_started_work_stays_the_students_without_the_enrollment(
+    api: TestClient, login_as: LoginAs, assignment: Json, db_session: Session
+) -> None:
+    first = start(api, login_as, assignment)
+    db_session.execute(delete(Enrollment))
+    db_session.commit()
+
+    response = api.post("/submissions", json={"assignment_id": assignment["id"]})
+
+    assert response.status_code == 200
+    assert response.json()["id"] == first["id"]
 
 
 def test_attempt_answers_are_saved_per_question(

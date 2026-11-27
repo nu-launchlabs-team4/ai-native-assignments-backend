@@ -59,7 +59,12 @@ def start_submission(
     student_id = _user_uuid(student)
     existing = _find_submission(db, assignment.id, student_id)
     if existing is not None:
+        # Work already started stays the student's, whatever happens to the enrollment.
         return SubmissionOut.model_validate(existing), False
+    if not _is_enrolled(db, assignment.course_id, student_id):
+        # Only the course's students can start it. The same 404 as a wrong id, so a
+        # shared link doesn't even reveal that the assignment exists.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ASSIGNMENT_NOT_FOUND)
 
     submission = Submission(assignment_id=assignment.id, student_id=student_id)
     db.add(submission)
@@ -191,6 +196,15 @@ def list_student_assignments(db: Session, student: CurrentUser) -> list[StudentA
         )
         for assignment, course_title, submission in rows
     ]
+
+
+def _is_enrolled(db: Session, course_id: uuid.UUID, student_id: uuid.UUID) -> bool:
+    enrollment_id = db.scalar(
+        select(Enrollment.id).where(
+            Enrollment.course_id == course_id, Enrollment.student_id == student_id
+        )
+    )
+    return enrollment_id is not None
 
 
 def _find_submission(

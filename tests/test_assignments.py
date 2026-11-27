@@ -17,6 +17,7 @@ from app.core.constants import Role
 from app.core.database import Base, get_db
 from app.core.security import CurrentUser, get_current_user
 from app.main import app
+from tests.conftest import enroll
 
 LoginAs = Callable[[Role, str], None]
 
@@ -350,15 +351,18 @@ def test_student_cannot_publish(api: TestClient, login_as: LoginAs) -> None:
 
 
 def test_published_assignment_can_be_started_by_a_student(
-    api: TestClient, login_as: LoginAs
+    api: TestClient, login_as: LoginAs, db_session: Session
 ) -> None:
     login_as(Role.PROFESSOR, PROFESSOR_ID)
-    assignment = create_assignment(api, create_course(api))
-    login_as(Role.STUDENT, str(uuid.uuid4()))
+    course_id = create_course(api)
+    assignment = create_assignment(api, course_id)
+    student_id = str(uuid.uuid4())
+    enroll(db_session, course_id, student_id)
+    login_as(Role.STUDENT, student_id)
     assert api.post("/submissions", json={"assignment_id": assignment["id"]}).status_code == 404
 
     login_as(Role.PROFESSOR, PROFESSOR_ID)
     api.post(f"/assignments/{assignment['id']}/publish")
-    login_as(Role.STUDENT, str(uuid.uuid4()))
+    login_as(Role.STUDENT, student_id)
 
     assert api.post("/submissions", json={"assignment_id": assignment["id"]}).status_code == 201

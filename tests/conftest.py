@@ -1,4 +1,5 @@
 import os
+import uuid
 from collections.abc import Callable, Iterator
 from unittest.mock import MagicMock
 
@@ -16,6 +17,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from app.assignments.models import Enrollment  # noqa: E402
 from app.core.constants import Role  # noqa: E402
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
@@ -75,3 +77,10 @@ def login_as() -> LoginAs:
         app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=user_id, role=role)
 
     return log_in
+
+
+def enroll(db_session: Session, course_id: str, *student_ids: str) -> None:
+    """Put students in a course, as joining with its code does."""
+    for student_id in student_ids:
+        db_session.add(Enrollment(course_id=uuid.UUID(course_id), student_id=uuid.UUID(student_id)))
+    db_session.commit()
