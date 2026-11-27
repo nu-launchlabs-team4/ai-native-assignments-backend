@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from collections.abc import Callable
@@ -433,6 +434,61 @@ def test_forgot_password_passes_on_rate_limits(api: TestClient, supabase: Respon
     response = api.post("/auth/forgot-password", json={"email": STUDENT_EMAIL})
 
     assert response.status_code == 429
+
+
+@pytest.mark.parametrize(
+    "supabase_result",
+    [
+        httpx.Response(200, json={}),
+        supabase_error(400, "user_not_found", "User not found"),
+        supabase_error(422, "email_address_invalid", "Email already confirmed"),
+    ],
+    ids=["unconfirmed-account", "no-such-account", "already-confirmed"],
+)
+def test_resend_confirmation_never_says_whether_the_account_exists(
+    api: TestClient, supabase: Responses, supabase_result: httpx.Response
+) -> None:
+    supabase["/resend"] = supabase_result
+
+    response = api.post("/auth/resend-confirmation", json={"email": STUDENT_EMAIL})
+
+    assert response.status_code == 204
+
+
+def test_resend_confirmation_asks_for_the_sign_up_email(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        sent.append({"path": request.url.path, "body": json.loads(request.content)})
+        return httpx.Response(200, json={})
+
+    monkeypatch.setattr(
+        supabase_auth,
+        "_client",
+        lambda: httpx.Client(
+            base_url="https://supabase.test/auth/v1", transport=httpx.MockTransport(handle)
+        ),
+    )
+
+    api.post("/auth/resend-confirmation", json={"email": STUDENT_EMAIL})
+
+    assert sent == [{"path": "/auth/v1/resend", "body": {"type": "signup", "email": STUDENT_EMAIL}}]
+
+
+def test_resend_confirmation_passes_on_rate_limits(api: TestClient, supabase: Responses) -> None:
+    supabase["/resend"] = supabase_error(429, "over_email_send_rate_limit", "Too many emails")
+
+    response = api.post("/auth/resend-confirmation", json={"email": STUDENT_EMAIL})
+
+    assert response.status_code == 429
+
+
+def test_resend_confirmation_needs_a_valid_email(api: TestClient) -> None:
+    response = api.post("/auth/resend-confirmation", json={"email": "not-an-email"})
+
+    assert response.status_code == 422
 
 
 def test_reset_password_sets_the_password_and_logs_in(

@@ -33,6 +33,10 @@ class ForgotPasswordIn(BaseModel):
     email: Email
 
 
+class ResendConfirmationIn(BaseModel):
+    email: Email
+
+
 class ResetPasswordIn(BaseModel):
     # The one-time code from the reset email's link.
     token_hash: str = Field(min_length=1, max_length=512)

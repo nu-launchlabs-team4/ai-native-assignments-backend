@@ -12,6 +12,7 @@ from app.users.cookies import clear_session_cookies, set_session_cookies
 from app.users.schemas import (
     ForgotPasswordIn,
     LoginIn,
+    ResendConfirmationIn,
     ResetPasswordIn,
     SignupIn,
     SignupOut,
@@ -57,6 +58,12 @@ def refresh(
 @limiter.limit(RATE_LIMIT_AUTH)
 def forgot_password(request: Request, body: ForgotPasswordIn) -> None:
     service.forgot_password(body)
+
+
+@auth_router.post("/resend-confirmation", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(RATE_LIMIT_AUTH)
+def resend_confirmation(request: Request, body: ResendConfirmationIn) -> None:
+    service.resend_confirmation(body)
 
 
 @auth_router.post("/reset-password", response_model=UserOut)
