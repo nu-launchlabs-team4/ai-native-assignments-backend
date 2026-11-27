@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.ai import service
-from app.ai.schemas import ChatRequest, ChatResponse
+from app.ai.schemas import ChatHistoryOut, ChatRequest, ChatResponse
 from app.core.constants import RATE_LIMIT_AI, Role
 from app.core.database import get_db
 from app.core.rate_limit import limiter
@@ -17,6 +17,12 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 
 DbSession = Annotated[Session, Depends(get_db)]
 Student = Annotated[CurrentUser, Depends(require_role(Role.STUDENT))]
+
+
+@router.get("/submissions/{submission_id}/chat", response_model=ChatHistoryOut)
+def chat_history(submission_id: uuid.UUID, db: DbSession, student: Student) -> ChatHistoryOut:
+    """The conversation so far, so the tutor panel can show it after a reload."""
+    return service.get_history(db, student, submission_id)
 
 
 @router.post(
