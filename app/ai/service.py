@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.ai.llm import AIUnavailableError, LanguageModel, Turn, get_llm
 from app.ai.models import ChatMessage
+from app.ai.schemas import ChatHistoryOut, ChatMessageOut
 from app.assignments.models import Assignment
 from app.core.constants import AIPolicy, Step, SubmissionStatus
 from app.core.security import CurrentUser
@@ -91,6 +92,23 @@ def _review_reply(llm: LanguageModel, reply: str, context: str) -> str:
         max_tokens=MAX_REPLY_TOKENS,
     )
     return reviewed or "Which part of your approach would you like to examine next?"
+
+
+def get_history(db: Session, student: CurrentUser, submission_id: uuid.UUID) -> ChatHistoryOut:
+    """The student's conversation with the tutor on their submission, oldest first."""
+    owned = db.scalar(
+        select(Submission.id).where(
+            Submission.id == submission_id, Submission.student_id == uuid.UUID(student.id)
+        )
+    )
+    if owned is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    messages = db.scalars(
+        select(ChatMessage)
+        .where(ChatMessage.submission_id == submission_id)
+        .order_by(ChatMessage.created_at, ChatMessage.id)
+    )
+    return ChatHistoryOut(messages=[ChatMessageOut.model_validate(message) for message in messages])
 
 
 def send_message(

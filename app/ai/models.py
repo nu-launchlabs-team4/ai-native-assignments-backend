@@ -1,7 +1,7 @@
 """SQLAlchemy models for AI chat."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, func
@@ -24,6 +24,10 @@ class ChatMessage(Base):
     )
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Stamped by the app to the microsecond, so a message and its reply always sort in
+    # order. (A database clock with whole seconds would tie them.)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now()
+    )
 
     submission: Mapped["Submission"] = relationship()

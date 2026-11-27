@@ -227,3 +227,54 @@ def test_chat_is_rate_limited(
 
     assert all(response.status_code == 200 for response in responses[:20])
     assert responses[20].status_code == 429
+
+
+def chat_url(submission: dict) -> str:
+    return f"/ai/submissions/{submission['id']}/chat"
+
+
+def test_history_is_empty_before_the_first_message(
+    api: TestClient, ready_submission: tuple[dict, dict]
+) -> None:
+    _, submission = ready_submission
+
+    response = api.get(chat_url(submission))
+
+    assert response.status_code == 200
+    assert response.json() == {"messages": []}
+
+
+def test_history_returns_the_conversation_oldest_first(
+    api: TestClient, monkeypatch: pytest.MonkeyPatch, ready_submission: tuple[dict, dict]
+) -> None:
+    _, submission = ready_submission
+    mock_llm(monkeypatch, ["What does your loop do first?", "What does your loop do first?"])
+    api.post(chat_url(submission), json={"message": "Is my loop right?"})
+
+    messages = api.get(chat_url(submission)).json()["messages"]
+
+    assert [(m["role"], m["content"]) for m in messages] == [
+        ("student", "Is my loop right?"),
+        ("assistant", "What does your loop do first?"),
+    ]
+    assert all(m["id"] and m["created_at"] for m in messages)
+
+
+def test_history_is_private_to_the_submissions_student(
+    api: TestClient, login_as: LoginAs, ready_submission: tuple[dict, dict]
+) -> None:
+    _, submission = ready_submission
+
+    login_as(Role.STUDENT, OTHER_STUDENT_ID)
+
+    assert api.get(chat_url(submission)).status_code == 404
+
+
+def test_history_is_for_students(
+    api: TestClient, login_as: LoginAs, ready_submission: tuple[dict, dict]
+) -> None:
+    _, submission = ready_submission
+
+    login_as(Role.PROFESSOR, str(uuid.uuid4()))
+
+    assert api.get(chat_url(submission)).status_code == 403

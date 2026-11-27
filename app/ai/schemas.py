@@ -1,8 +1,10 @@
 """Request and response schemas for AI chat."""
 
 import uuid
+from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
@@ -16,3 +18,20 @@ class ChatResponse(BaseModel):
 
     message_id: uuid.UUID
     reply: str
+
+
+class ChatMessageOut(BaseModel):
+    """One saved message: the student's, or the tutor's reply."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    role: Literal["student", "assistant"]
+    content: str
+    created_at: datetime
+
+
+class ChatHistoryOut(BaseModel):
+    """A submission's conversation with the AI tutor, oldest first."""
+
+    messages: list[ChatMessageOut]
